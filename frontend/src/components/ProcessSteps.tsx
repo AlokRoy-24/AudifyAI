@@ -2,13 +2,19 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import AuditParametersDrawer from "./AuditParametersDrawer";
-import { CheckCircle2, Upload } from "lucide-react";
+import { CheckCircle2, Upload, Loader2 } from "lucide-react";
+import apiService, { AuditResponse } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
+import AuditResults from "./AuditResults";
 
 const ProcessSteps = () => {
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedParameters, setSelectedParameters] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [auditResults, setAuditResults] = useState<AuditResponse | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -32,20 +38,52 @@ const ProcessSteps = () => {
     }
   };
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (completedSteps.includes(1) && completedSteps.includes(2)) {
       if (!completedSteps.includes(3)) {
         setCompletedSteps(prev => [...prev, 3]);
       }
-      // Here you would implement the actual report generation
-      alert("Generating your comprehensive audit report...");
+      
+      setIsProcessing(true);
+      
+      try {
+        // Perform audit
+        const results = await apiService.performAudit(uploadedFiles, {
+          parameters: selectedParameters,
+          custom_prompts: {}
+        });
+        
+        setAuditResults(results);
+        
+        toast({
+          title: "Audit Complete!",
+          description: `Successfully processed ${results.processed_files} files with ${results.total_files} total files.`,
+        });
+        
+      } catch (error) {
+        console.error('Audit failed:', error);
+        toast({
+          title: "Audit Failed",
+          description: error instanceof Error ? error.message : "An error occurred during the audit.",
+          variant: "destructive",
+        });
+        
+        // Remove step 3 if it was added
+        setCompletedSteps(prev => prev.filter(step => step !== 3));
+      } finally {
+        setIsProcessing(false);
+      }
     } else {
-      alert("Please complete steps 1 and 2 first");
+      toast({
+        title: "Incomplete Steps",
+        description: "Please complete steps 1 and 2 first",
+        variant: "destructive",
+      });
     }
   };
 
   const isStepCompleted = (step: number) => completedSteps.includes(step);
-
+  
   return (
     <section id="process" className="py-20 bg-muted/30">
       <div className="container mx-auto px-6">
@@ -265,27 +303,60 @@ const ProcessSteps = () => {
                   variant={isStepCompleted(3) ? "outline" : "cta"} 
                   className="w-full"
                   onClick={handleGenerateReport}
-                  disabled={!isStepCompleted(1) || !isStepCompleted(2)}
+                  disabled={!isStepCompleted(1) || !isStepCompleted(2) || isProcessing}
                 >
-                  {isStepCompleted(3) ? 'Report Generated ✓' : 'Generate Report'}
-                  <svg
-                    className="w-4 h-4 ml-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 7l5 5m0 0l-5 5m5-5H6"
-                    />
-                  </svg>
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : isStepCompleted(3) ? (
+                    <>
+                      Report Generated ✓
+                      <svg
+                        className="w-4 h-4 ml-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 7l5 5m0 0l-5 5m5-5H6"
+                        />
+                      </svg>
+                    </>
+                  ) : (
+                    <>
+                      Generate Report
+                      <svg
+                        className="w-4 h-4 ml-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 7l5 5m0 0l-5 5m5-5H6"
+                        />
+                      </svg>
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>
           </Card>
         </div>
+        
+        {/* Results Section */}
+        {auditResults && (
+          <div className="mt-16">
+            <AuditResults results={auditResults} />
+          </div>
+        )}
         
         {/* Footnote */}
         <div className="text-center mt-16">
