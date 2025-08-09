@@ -230,6 +230,57 @@ def get_prompt_for_parameter(parameter: str) -> str:
     else:
         return f"Analyze this call recording for {parameter}. Return 'Yes' or 'No', include a confidence score (0-100%), and provide a brief reasoning."
 
+def get_combined_prompt(parameters: list) -> str:
+    """
+    Create a single prompt that evaluates multiple parameters at once
+    This reduces API calls from N parameters to 1 call per file
+    """
+    if not parameters:
+        return ""
+    
+    # Build parameter descriptions for the combined prompt
+    param_sections = []
+    for param in parameters:
+        if param in AUDIT_PROMPTS:
+            prompt_data = AUDIT_PROMPTS[param]
+            description = prompt_data["description"]
+            category = prompt_data["category"]
+            
+            # Extract the "Look for:" section from individual prompts
+            individual_prompt = prompt_data["prompt"]
+            look_for_start = individual_prompt.find("Look for:")
+            look_for_end = individual_prompt.find("\n\nReturn your response")
+            
+            if look_for_start != -1 and look_for_end != -1:
+                look_for_section = individual_prompt[look_for_start:look_for_end]
+                param_sections.append(f"**{param.upper()} ({category})**\n{description}\n{look_for_section}")
+            else:
+                param_sections.append(f"**{param.upper()} ({category})**\n{description}")
+    
+    # Create the combined prompt
+    combined_prompt = f"""Listen to this call recording and evaluate the following {len(parameters)} aspects of the call center interaction:
+
+{chr(10).join(param_sections)}
+
+IMPORTANT: Return your response in this exact JSON format:
+{{
+    "results": [
+        {{"parameter": "{parameters[0]}", "verdict": "Yes/No", "confidence": "0-100%", "reasoning": "Brief explanation"}},"""
+    
+    # Add remaining parameters to the JSON template
+    for param in parameters[1:]:
+        combined_prompt += f"""
+        {{"parameter": "{param}", "verdict": "Yes/No", "confidence": "0-100%", "reasoning": "Brief explanation"}},"""
+    
+    # Remove the last comma and close the JSON
+    combined_prompt = combined_prompt.rstrip(',') + """
+    ]
+}
+
+Analyze each parameter carefully and provide accurate verdicts, confidence scores, and brief reasoning for each assessment."""
+
+    return combined_prompt
+
 def get_all_parameters() -> dict:
     """
     Get all available audit parameters with their descriptions

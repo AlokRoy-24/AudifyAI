@@ -2,18 +2,22 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import AuditParametersDrawer from "./AuditParametersDrawer";
-import { CheckCircle2, Upload, Loader2 } from "lucide-react";
-import apiService, { AuditResponse } from "@/services/api";
+import { CheckCircle2, Upload, Loader2, Zap } from "lucide-react";
+import apiService, { AuditResponse, StreamEvent } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import AuditResults from "./AuditResults";
+import AuditProgress from "./AuditProgress";
 
 const ProcessSteps = () => {
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedParameters, setSelectedParameters] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
   const [auditResults, setAuditResults] = useState<AuditResponse | null>(null);
+  const [useStreaming, setUseStreaming] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const auditProgressRef = useRef<{ handleStreamEvent: (event: StreamEvent) => void }>(null);
   const { toast } = useToast();
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,21 +51,39 @@ const ProcessSteps = () => {
       setIsProcessing(true);
       
       try {
-        // Perform audit
-        const results = await apiService.performAudit(uploadedFiles, {
-          parameters: selectedParameters,
-          custom_prompts: {}
-        });
-        
-        setAuditResults(results);
-        
-        toast({
-          title: "Audit Complete!",
-          description: `Successfully processed ${results.processed_files} files with ${results.total_files} total files.`,
-        });
+        if (useStreaming) {
+          // Use streaming for real-time progress
+          setShowProgress(true);
+          
+          const results = await apiService.performAuditStream(
+            uploadedFiles, 
+            {
+              parameters: selectedParameters,
+              custom_prompts: {}
+            },
+            handleStreamEvent
+          );
+          
+          // Results will be set via progress completion
+          
+        } else {
+          // Use optimized non-streaming method
+          const results = await apiService.performAudit(uploadedFiles, {
+            parameters: selectedParameters,
+            custom_prompts: {}
+          });
+          
+          setAuditResults(results);
+          
+          toast({
+            title: "Audit Complete!",
+            description: `Successfully processed ${results.processed_files} files in ${results.processing_time?.toFixed(1)}s.`,
+          });
+        }
         
       } catch (error) {
         console.error('Audit failed:', error);
+        setShowProgress(false);
         toast({
           title: "Audit Failed",
           description: error instanceof Error ? error.message : "An error occurred during the audit.",
@@ -71,7 +93,9 @@ const ProcessSteps = () => {
         // Remove step 3 if it was added
         setCompletedSteps(prev => prev.filter(step => step !== 3));
       } finally {
-        setIsProcessing(false);
+        if (!useStreaming) {
+          setIsProcessing(false);
+        }
       }
     } else {
       toast({
@@ -80,6 +104,53 @@ const ProcessSteps = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleStreamEvent = (event: StreamEvent) => {
+    // Stream events are handled by the AuditProgress component
+    console.log('Stream event:', event);
+    
+    // Pass the event to the AuditProgress component if it's visible
+    if (auditProgressRef.current) {
+      auditProgressRef.current.handleStreamEvent(event);
+    }
+  };
+
+  const handleProgressComplete = (results: any) => {
+    setIsProcessing(false);
+    setShowProgress(false);
+    
+    // Convert progress results to AuditResponse format
+    const auditResponse: AuditResponse = {
+      audit_id: results.audit_id,
+      total_files: results.total_files,
+      processed_files: results.processed_files,
+      results: results.fileResults || [], // Use the collected file results
+      overall_summary: results.overall_summary,
+      generated_at: new Date().toISOString(),
+      processing_time: results.processing_time
+    };
+    
+    setAuditResults(auditResponse);
+    
+    toast({
+      title: "Audit Complete!",
+      description: `Successfully processed ${results.processed_files} files in ${results.processing_time?.toFixed(1)}s with real-time updates.`,
+    });
+  };
+
+  const handleProgressError = (error: string) => {
+    setIsProcessing(false);
+    setShowProgress(false);
+    
+    toast({
+      title: "Audit Failed",
+      description: error,
+      variant: "destructive",
+    });
+    
+    // Remove step 3 if it was added
+    setCompletedSteps(prev => prev.filter(step => step !== 3));
   };
 
   const isStepCompleted = (step: number) => completedSteps.includes(step);
@@ -299,6 +370,25 @@ const ProcessSteps = () => {
                     <span>Export options</span>
                   </div>
                 </div>
+                              <div className="space-y-3">
+                {/* Streaming Toggle */}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Real-time progress:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setUseStreaming(!useStreaming)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                        useStreaming 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      <Zap className="w-3 h-3" />
+                      {useStreaming ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </div>
+                </div>
+
                 <Button 
                   variant={isStepCompleted(3) ? "outline" : "cta"} 
                   className="w-full"
@@ -308,7 +398,7 @@ const ProcessSteps = () => {
                   {isProcessing ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
+                      {useStreaming ? 'Processing with live updates...' : 'Processing...'}
                     </>
                   ) : isStepCompleted(3) ? (
                     <>
@@ -329,30 +419,52 @@ const ProcessSteps = () => {
                     </>
                   ) : (
                     <>
-                      Generate Report
-                      <svg
-                        className="w-4 h-4 ml-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 7l5 5m0 0l-5 5m5-5H6"
-                        />
-                      </svg>
+                      {useStreaming ? (
+                        <>
+                          <Zap className="w-4 h-4 mr-2" />
+                          Generate Report (Live)
+                        </>
+                      ) : (
+                        <>
+                          Generate Report
+                          <svg
+                            className="w-4 h-4 ml-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M13 7l5 5m0 0l-5 5m5-5H6"
+                            />
+                          </svg>
+                        </>
+                      )}
                     </>
                   )}
                 </Button>
+              </div>
               </div>
             </CardContent>
           </Card>
         </div>
         
+        {/* Progress Section */}
+        {showProgress && (
+          <div className="mt-16">
+            <AuditProgress 
+              ref={auditProgressRef}
+              isVisible={showProgress}
+              onComplete={handleProgressComplete}
+              onError={handleProgressError}
+            />
+          </div>
+        )}
+        
         {/* Results Section */}
-        {auditResults && (
+        {auditResults && !showProgress && (
           <div className="mt-16">
             <AuditResults results={auditResults} />
           </div>

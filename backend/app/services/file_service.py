@@ -31,14 +31,61 @@ class FileService:
         saved_files = []
         
         for file in files:
-            # Validate file
-            await self._validate_file(file)
-            
-            # Save file
-            file_path = await self._save_file(file)
+            # Validate and save file in one step to avoid reading the file twice
+            file_path = await self._validate_and_save_file(file)
             saved_files.append(file_path)
         
         return saved_files
+    
+    async def _validate_and_save_file(self, file: UploadFile) -> str:
+        """
+        Validate and save a file in one step to avoid reading the file twice
+        """
+        # Check file size
+        if file.size and file.size > self.max_file_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {file.filename} is too large. Maximum size is {self.max_file_size // (1024*1024)}MB"
+            )
+        
+        # Check filename exists
+        if not file.filename:
+            raise HTTPException(
+                status_code=400,
+                detail="File must have a filename"
+            )
+        
+        # Check file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in self.allowed_formats:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File format {file_ext} not allowed. Allowed formats: {', '.join(self.allowed_formats)}"
+            )
+        
+        # Read file content once for both validation and saving
+        content = await file.read()
+        
+        # Validate MIME type using the content
+        if len(content) > 0:
+            mime_type = magic.from_buffer(content[:1024], mime=True)  # Use first 1KB for MIME detection
+            if not mime_type.startswith('audio/'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File {file.filename} is not an audio file. Detected MIME type: {mime_type}"
+                )
+        
+        # Create a unique filename and save the file
+        import uuid
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(self.upload_dir, unique_filename)
+        
+        # Save the file using the content we already read
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(content)
+        
+        logger.info(f"Validated and saved file: {file_path}")
+        return file_path
     
     async def _validate_file(self, file: UploadFile) -> None:
         """
