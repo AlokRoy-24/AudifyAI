@@ -22,7 +22,7 @@ const Navigation = () => {
                 <path d="M3 10v6c0 .552.448 1 1 1h16c.552 0 1-.448 1-1v-6" />
               </svg>
             </div>
-            <span className="text-xl font-bold text-foreground">AuditAI</span>
+            <span className="text-xl font-bold text-foreground">AudifyAI</span>
           </div>
 
           {/* Navigation Menu */}

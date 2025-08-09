@@ -136,25 +136,6 @@ const ProcessSteps = () => {
                 className="hidden"
               />
               
-              {uploadedFiles.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    {uploadedFiles.length} file(s) uploaded:
-                  </p>
-                  <div className="space-y-1">
-                    {uploadedFiles.slice(0, 3).map((file, index) => (
-                      <p key={index} className="text-xs text-muted-foreground truncate">
-                        {file.name}
-                      </p>
-                    ))}
-                    {uploadedFiles.length > 3 && (
-                      <p className="text-xs text-muted-foreground">
-                        +{uploadedFiles.length - 3} more files
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
@@ -174,6 +155,25 @@ const ProcessSteps = () => {
                   </svg>
                   <span>Secure & private</span>
                 </div>
+                {uploadedFiles.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {uploadedFiles.length} file(s) uploaded
+                  </p>
+                  <div className="space-y-1">
+                    {uploadedFiles.slice(0, 3).map((file, index) => (
+                      <p key={index} className="text-xs text-muted-foreground truncate">
+                        {/* {file.name} */}
+                      </p>
+                    ))}
+                    {uploadedFiles.length > 3 && (
+                      <p className="text-xs text-muted-foreground">
+                        +{uploadedFiles.length - 3} more files
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               </div>
               
               <Button 
@@ -214,7 +214,7 @@ const ProcessSteps = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -358,12 +358,12 @@ const ProcessSteps = () => {
           </div>
         )}
         
-        {/* Footnote */}
+        {/* Footnote
         <div className="text-center mt-16">
           <p className="text-sm text-muted-foreground">
             Created with ❤️ by alumni of IIT Kharagpur
           </p>
-        </div>
+        </div> */}
       </div>
     </section>
   );
