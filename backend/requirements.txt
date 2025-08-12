@@ -8,7 +8,7 @@ pydantic-settings==2.0.3
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 aiofiles==23.2.1
-python-magic==0.4.27
+filetype==1.2.0
 Pillow==10.1.0
 httpx==0.25.2
 pytest==7.4.3

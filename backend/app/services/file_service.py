@@ -1,6 +1,6 @@
 import os
 import aiofiles
-import magic
+import filetype
 from typing import List, Tuple
 from fastapi import UploadFile, HTTPException
 from app.core.config import settings
@@ -68,7 +68,8 @@ class FileService:
         
         # Validate MIME type using the content
         if len(content) > 0:
-            mime_type = magic.from_buffer(content[:1024], mime=True)  # Use first 1KB for MIME detection
+            kind = filetype.guess(content[:8192])
+            mime_type = kind.mime if kind else 'application/octet-stream'
             if not mime_type.startswith('audio/'):
                 raise HTTPException(
                     status_code=400,
@@ -116,7 +117,8 @@ class FileService:
         content = await file.read(1024)  # Read first 1KB for MIME detection
         await file.seek(0)  # Reset file pointer
         
-        mime_type = magic.from_buffer(content, mime=True)
+        kind = filetype.guess(content)
+        mime_type = kind.mime if kind else 'application/octet-stream'
         if not mime_type.startswith('audio/'):
             raise HTTPException(
                 status_code=400,

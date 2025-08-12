@@ -45,7 +45,7 @@ def check_dependencies():
         "dotenv",
         "pydantic",
         "aiofiles",
-        "magic"
+        "filetype"
     ]
     
     missing_packages = []
