@@ -197,10 +197,19 @@ class ApiService {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let hasCompleted = false;
+
+      if (!reader) {
+        reject(new Error('Response body is not readable'));
+        return;
+      }
 
       function readStream() {
-        reader?.read().then(({ done, value }) => {
+        reader.read().then(({ done, value }) => {
           if (done) {
+            if (!hasCompleted) {
+              reject(new Error('Stream ended unexpectedly'));
+            }
             return;
           }
 
@@ -215,28 +224,38 @@ class ApiService {
                 onProgress(data);
 
                 if (data.type === 'completed') {
+                  hasCompleted = true;
                   // Convert the streaming response to AuditResponse format
                   const auditResponse: AuditResponse = {
                     audit_id: data.audit_id,
                     total_files: data.total_files,
                     processed_files: data.processed_files,
-                    results: [], // Results are sent via progress events
+                    results: [], // Results are collected via progress events
                     overall_summary: data.overall_summary,
                     generated_at: new Date().toISOString(),
                     processing_time: data.processing_time
                   };
                   resolve(auditResponse);
+                  return;
                 } else if (data.type === 'error') {
+                  hasCompleted = true;
                   reject(new Error(data.message));
+                  return;
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e);
+                // Continue processing other lines
               }
             }
           }
 
           readStream(); // Continue reading
-        }).catch(reject);
+        }).catch((error) => {
+          if (!hasCompleted) {
+            hasCompleted = true;
+            reject(error);
+          }
+        });
       }
 
       readStream();

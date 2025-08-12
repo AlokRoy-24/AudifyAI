@@ -16,7 +16,7 @@ const HeroSection = ({ onTryClick }: HeroSectionProps) => {
         <img 
           src={heroIllustration} 
           alt="AI Technology Illustration" 
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2/3 h-auto opacity-5"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-auto opacity-10 object-contain"
         />
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-primary-glow/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
@@ -78,6 +78,7 @@ const HeroSection = ({ onTryClick }: HeroSectionProps) => {
                 />
               </svg>
             </Button>
+
           </div>
 
           {/* Trust Indicators */}

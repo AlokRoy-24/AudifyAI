@@ -3,12 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Loader2, AlertCircle, Clock, FileAudio } from "lucide-react";
-import { StreamEvent } from "@/services/api";
+import { StreamEvent, AuditResult } from "@/services/api";
 
 interface AuditProgressProps {
   isVisible: boolean;
   onComplete: (results: any) => void;
   onError: (error: string) => void;
+  onFileCompleted?: (fileResult: any) => void;
+  onFileError?: (fileError: any) => void;
 }
 
 interface FileProgress {
@@ -17,13 +19,14 @@ interface FileProgress {
   status: 'pending' | 'processing' | 'completed' | 'error';
   score?: number;
   error?: string;
-  resultsCount?: number; // Store the count of results for this file
-  fileSize?: number; // Store file size
-  detailedResults?: any[]; // Store detailed audit results for this file
+  resultsCount?: number;
+  fileSize?: number;
+  detailedResults?: AuditResult[];
+  completedAt?: Date;
 }
 
 const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => void }, AuditProgressProps>(
-  ({ isVisible, onComplete, onError }, ref) => {
+  ({ isVisible, onComplete, onError, onFileCompleted, onFileError }, ref) => {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<'started' | 'processing' | 'completed' | 'error'>('started');
   const [currentPhase, setCurrentPhase] = useState('Initializing...');
@@ -32,7 +35,6 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
   const [files, setFiles] = useState<FileProgress[]>([]);
   const [auditId, setAuditId] = useState<string>('');
   const [processingTime, setProcessingTime] = useState(0);
-  const [estimatedTime, setEstimatedTime] = useState('2-3 seconds');
 
   // Timer for processing time
   useEffect(() => {
@@ -56,7 +58,6 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
         setStatus('processing');
         setAuditId(event.audit_id || '');
         setTotalFiles(event.total_files || 0);
-        setEstimatedTime(event.expected_time || '2-3 seconds');
         setCurrentPhase(`Starting audit for ${event.total_files} files with ${event.total_parameters} parameters`);
         setProgress(5);
         
@@ -74,33 +75,57 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
 
       case 'file_started':
         setCurrentPhase(`Processing ${event.filename}...`);
-        setProgress(event.progress || 0);
         
         setFiles(prev => prev.map(file => 
           file.index === event.file_index 
             ? { ...file, filename: event.filename || file.filename, status: 'processing' }
             : file
         ));
+        
+        // Update progress based on files started
+        const startedFiles = files.filter(f => f.status === 'processing' || f.status === 'completed').length;
+        const newProgress = Math.min(5 + (startedFiles / totalFiles) * 85, 90);
+        setProgress(newProgress);
         break;
 
       case 'file_completed':
-        setProcessedFiles(prev => prev + 1);
-        setProgress(event.progress || 0);
-        setCurrentPhase(`Completed ${event.filename} (Score: ${event.overall_score?.toFixed(1)}%)`);
-        
+        const completedFile = {
+          index: event.file_index || 0,
+          filename: event.filename || '',
+          status: 'completed' as const,
+          score: event.overall_score,
+          resultsCount: event.results_count || event.results,
+          fileSize: event.file_size,
+          detailedResults: event.detailed_results || [],
+          completedAt: new Date()
+        };
+
         setFiles(prev => prev.map(file => 
           file.index === event.file_index 
-            ? { 
-                ...file, 
-                filename: event.filename || file.filename, 
-                status: 'completed',
-                score: event.overall_score,
-                resultsCount: event.results_count || event.results, // Use new field or fallback
-                fileSize: event.file_size,
-                detailedResults: event.detailed_results || [] // Store detailed results
-              }
+            ? completedFile
             : file
         ));
+
+        // Add to completed results immediately
+        const fileResult = {
+          filename: event.filename || '',
+          file_size: event.file_size || 0,
+          results: event.detailed_results || [],
+          overall_score: event.overall_score || 0,
+          summary: `File processed with score: ${event.overall_score?.toFixed(1)}%`
+        };
+        
+        // Notify parent component about file completion
+        if (onFileCompleted) {
+          onFileCompleted(fileResult);
+        }
+        
+        // Update progress
+        setProcessedFiles(prev => prev + 1);
+        const completedProgress = Math.min(5 + (processedFiles + 1) / totalFiles * 85, 90);
+        setProgress(completedProgress);
+        
+        setCurrentPhase(`Completed ${event.filename} (Score: ${event.overall_score?.toFixed(1)}%)`);
         break;
 
       case 'file_error':
@@ -116,6 +141,16 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
               }
             : file
         ));
+        
+        setProcessedFiles(prev => prev + 1);
+        
+        // Notify parent component about file error
+        if (onFileError) {
+          onFileError({
+            filename: event.filename || '',
+            error: event.error || 'Unknown error'
+          });
+        }
         break;
 
       case 'completed':
@@ -126,31 +161,13 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
         
         // Trigger completion callback with collected file results
         setTimeout(() => {
-          // Get current files state to access collected results
-          setFiles(currentFiles => {
-            // Convert file progress data to FileAuditResult format
-            const fileResults = currentFiles
-              .filter(file => file.status === 'completed')
-              .map(file => ({
-                filename: file.filename,
-                file_size: file.fileSize || 0, // Use file size from streaming events
-                results: file.detailedResults || [], // Use detailed results from streaming events
-                overall_score: file.score || 0,
-                summary: file.detailedResults && file.detailedResults.length > 0 
-                  ? undefined // Don't show summary if we have detailed results
-                  : `File processed with score: ${file.score?.toFixed(1)}%`
-              }));
-            
-            onComplete({
-              audit_id: event.audit_id,
-              total_files: event.total_files,
-              processed_files: event.processed_files,
-              processing_time: event.processing_time,
-              overall_summary: event.overall_summary,
-              fileResults: fileResults // Pass the collected file results
-            });
-            
-            return currentFiles; // Return unchanged files state
+          onComplete({
+            audit_id: event.audit_id,
+            total_files: event.total_files,
+            processed_files: event.processed_files,
+            processing_time: event.processing_time,
+            overall_summary: event.overall_summary,
+            fileResults: [] // No longer collecting file results here
           });
         }, 1000);
         break;
@@ -210,12 +227,12 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Overall Progress</span>
-            <span>{progress.toFixed(0)}%</span>
+            <span>{Math.max(0, Math.min(100, progress || 0)).toFixed(0)}%</span>
           </div>
           <Progress value={progress} className="w-full" />
           <div className="flex justify-between text-xs text-muted-foreground">
             <span>Processed: {processedFiles}/{totalFiles} files</span>
-            <span>Time: {processingTime.toFixed(1)}s / ~{estimatedTime}</span>
+            <span>Time: {processingTime.toFixed(1)}s</span>
           </div>
         </div>
 
@@ -256,7 +273,6 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
           </div>
         )}
 
-        {/* Status Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-600">{totalFiles}</div>
@@ -271,7 +287,7 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
             <div className="text-xs text-muted-foreground">Processing Time</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">{progress.toFixed(0)}%</div>
+            <div className="text-2xl font-bold text-orange-600">{Math.max(0, Math.min(100, progress || 0)).toFixed(0)}%</div>
             <div className="text-xs text-muted-foreground">Complete</div>
           </div>
         </div>
@@ -282,26 +298,5 @@ const AuditProgress = forwardRef<{ handleStreamEvent: (event: StreamEvent) => vo
 
 // Add display name for debugging
 AuditProgress.displayName = 'AuditProgress';
-
-// Export the handler function for use in other components
-export const createStreamHandler = (
-  setProgressVisible: (visible: boolean) => void,
-  onComplete: (results: any) => void,
-  onError: (error: string) => void
-) => {
-  let progressComponent: any = null;
-
-  const handleStreamEvent = (event: StreamEvent) => {
-    if (event.type === 'started') {
-      setProgressVisible(true);
-    }
-    
-    if (progressComponent && progressComponent.handleStreamEvent) {
-      progressComponent.handleStreamEvent(event);
-    }
-  };
-
-  return { handleStreamEvent };
-};
 
 export default AuditProgress;

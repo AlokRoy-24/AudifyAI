@@ -316,26 +316,19 @@ async def audit_files_stream(
             # Process files with progress updates
             results = []
             
-            # Process all files and stream progress
-            file_tasks = []
+            # Process files sequentially to provide better progress tracking
             for idx, file_path in enumerate(saved_files):
-                # Send file processing start
-                file_info = file_service.get_file_info(file_path)
-                yield f"data: {json.dumps({'type': 'file_started', 'file_index': idx, 'filename': file_info['filename'], 'progress': (idx / total_files) * 100})}\n\n"
-                
-                # Create task for this file
-                task = asyncio.create_task(gemini_service.audit_file_optimized(
-                    file_path=file_path,
-                    parameters=audit_request.parameters,
-                    custom_prompts=audit_request.custom_prompts
-                ))
-                file_tasks.append((task, file_path, idx))
-            
-            # Wait for files to complete and stream results
-            for task, file_path, idx in file_tasks:
                 try:
-                    audit_results = await task
+                    # Send file processing start
                     file_info = file_service.get_file_info(file_path)
+                    yield f"data: {json.dumps({'type': 'file_started', 'file_index': idx, 'filename': file_info['filename']})}\n\n"
+                    
+                    # Process this file
+                    audit_results = await gemini_service.audit_file_optimized(
+                        file_path=file_path,
+                        parameters=audit_request.parameters,
+                        custom_prompts=audit_request.custom_prompts
+                    )
                     
                     # Convert to AuditResult objects
                     audit_result_objects = []
@@ -360,14 +353,13 @@ async def audit_files_stream(
                     
                     results.append(file_result)
                     
-                    # Send file completion with detailed results
+                    # Send file completion with detailed results immediately
                     file_completion_data = {
                         'type': 'file_completed', 
                         'file_index': idx, 
                         'filename': file_info['filename'], 
                         'overall_score': overall_score, 
                         'results_count': len(audit_result_objects),
-                        'progress': ((idx + 1) / total_files) * 100,
                         'file_size': file_info['size'],
                         'detailed_results': [
                             {
@@ -379,6 +371,9 @@ async def audit_files_stream(
                         ]
                     }
                     yield f"data: {json.dumps(file_completion_data)}\n\n"
+                    
+                    # Small delay to ensure frontend receives the event
+                    await asyncio.sleep(0.1)
                     
                 except Exception as e:
                     logger.error(f"Error processing file {file_path}: {str(e)}")
@@ -406,8 +401,7 @@ async def audit_files_stream(
                 'total_files': total_files,
                 'processed_files': len(results),
                 'processing_time': processing_time,
-                'overall_summary': overall_summary,
-                'progress': 100
+                'overall_summary': overall_summary
             }
             yield f"data: {json.dumps(final_response)}\n\n"
             

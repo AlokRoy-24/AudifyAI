@@ -2,6 +2,7 @@ import { useState } from "react";
 import Navigation from "@/components/Navigation";
 import HeroSection from "@/components/HeroSection";
 import ProcessSteps from "@/components/ProcessSteps";
+import Footer from "@/components/Footer";
 
 const Index = () => {
   const handleTryClick = () => {
@@ -19,6 +20,7 @@ const Index = () => {
       <Navigation />
       <HeroSection onTryClick={handleTryClick} />
       <ProcessSteps />
+      <Footer />
     </div>
   );
 };
