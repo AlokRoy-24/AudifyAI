@@ -1,3 +1,5 @@
+providers = ["python"]
+
 [phases.setup]
 # Ensure Python, build tools, and libmagic (via `file`) are present
 nixPkgs = ["python3", "gcc", "file"]
