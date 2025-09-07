@@ -267,10 +267,6 @@ docker-compose up --build
 - Update documentation as needed
 - Follow conventional commit messages
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - **Google Gemini AI** for powerful audio analysis capabilities
@@ -285,8 +281,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Discussions**: Join our community discussions for questions and ideas
 
 ---
-
-<div align="center">
-  <p>Built with ❤️ for better call center performance</p>
-  <p>© 2024 AudifyAI. All rights reserved.</p>
-</div>
